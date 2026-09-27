@@ -34,6 +34,7 @@ let coasterAvailable = true;
 let coasterFull = false;
 let isDriverLoggedIn = sessionStorage.getItem("driver_logged_in") === "true";
 let activeTimerInterval = null;
+let html5QrCodeScanner = null;
 
 function getDeviceId() {
   let id = localStorage.getItem("coaster_device_id");
@@ -55,6 +56,11 @@ const reservationTrip = document.getElementById("reservation-trip");
 const reservationTimer = document.getElementById("reservation-timer");
 const checkinStatusBanner = document.getElementById("checkin-status-banner");
 const checkinStatusText = document.getElementById("checkin-status-text");
+const openCameraBtn = document.getElementById("open-camera-btn");
+const qrFileInput = document.getElementById("qr-file-input");
+const scannerModal = document.getElementById("scanner-modal");
+const uploadFileBtn = document.getElementById("upload-file-btn");
+const closeScannerBtn = document.getElementById("close-scanner-btn");
 const seatGrid = document.getElementById("seat-grid");
 const syncIndicator = document.getElementById("sync-indicator");
 const toast = document.getElementById("toast");
@@ -89,26 +95,95 @@ const selectMabigaDapdap = document.getElementById("select-mabiga-dapdap");
 let selectedTrip = null;
 let activeReservation = JSON.parse(localStorage.getItem("active_res") || "null");
 
-// Check URL Params for Door Scan Fulfillment
+function executeCheckinFulfillment() {
+  if (activeReservation && activeReservation.status === "ACTIVE") {
+    db.ref(`reservations/${activeReservation.tripId}/${activeReservation.id}/status`).set("FULFILLED")
+      .then(() => {
+        activeReservation.status = "FULFILLED";
+        localStorage.setItem("active_res", JSON.stringify(activeReservation));
+        showToast("🎉 Seat Verified & Fulfilled!");
+        renderUI();
+      });
+  } else if (activeReservation && activeReservation.status === "FULFILLED") {
+    showToast("✅ Seat already verified.");
+  } else {
+    showToast("⚠️ No active seat reservation found.");
+  }
+}
+
 function handleDoorScanCheckin() {
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get("checkin") === "true") {
-    if (activeReservation && activeReservation.status === "ACTIVE") {
-      db.ref(`reservations/${activeReservation.tripId}/${activeReservation.id}/status`).set("FULFILLED")
-        .then(() => {
-          activeReservation.status = "FULFILLED";
-          localStorage.setItem("active_res", JSON.stringify(activeReservation));
-          showToast("🎉 Seat Verified & Fulfilled!");
-          window.history.replaceState({}, document.title, window.location.pathname);
-          renderUI();
-        });
-    } else if (activeReservation && activeReservation.status === "FULFILLED") {
-      showToast("✅ Seat already verified.");
-    } else {
-      showToast("⚠️ No active seat reservation found to fulfill.");
-    }
+    executeCheckinFulfillment();
+    window.history.replaceState({}, document.title, window.location.pathname);
   }
 }
+
+// Camera Scanner Logic
+openCameraBtn.addEventListener("click", () => {
+  scannerModal.hidden = false;
+  
+  if (!html5QrCodeScanner) {
+    html5QrCodeScanner = new Html5Qrcode("qr-reader");
+  }
+
+  const config = { fps: 10, qrbox: { width: 220, height: 220 } };
+
+  html5QrCodeScanner.start(
+    { facingMode: "environment" },
+    config,
+    (decodedText) => {
+      // Successful QR scan
+      stopScanner();
+      scannerModal.hidden = true;
+
+      if (decodedText.includes("checkin=true")) {
+        executeCheckinFulfillment();
+      } else {
+        showToast("Invalid Door QR Code.");
+      }
+    },
+    () => {}
+  ).catch((err) => {
+    showToast("Camera permission denied. Use file upload instead.");
+  });
+});
+
+uploadFileBtn.addEventListener("click", () => {
+  qrFileInput.click();
+});
+
+qrFileInput.addEventListener("change", (e) => {
+  if (e.target.files.length === 0) return;
+  const imageFile = e.target.files[0];
+
+  if (!html5QrCodeScanner) {
+    html5QrCodeScanner = new Html5Qrcode("qr-reader");
+  }
+
+  html5QrCodeScanner.scanFile(imageFile, true)
+    .then((decodedText) => {
+      stopScanner();
+      scannerModal.hidden = true;
+      if (decodedText.includes("checkin=true")) {
+        executeCheckinFulfillment();
+      } else {
+        showToast("Invalid Door QR Code image.");
+      }
+    })
+    .catch(() => showToast("Could not find a valid QR Code in image."));
+});
+
+function stopScanner() {
+  if (html5QrCodeScanner && html5QrCodeScanner.isScanning) {
+    html5QrCodeScanner.stop().catch(() => {});
+  }
+}
+
+closeScannerBtn.addEventListener("click", () => {
+  stopScanner();
+  scannerModal.hidden = true;
+});
 
 // Schedules
 const dapdapToMabigaTimes = [
@@ -279,11 +354,13 @@ function renderReservationUI() {
     if (activeReservation.status === "FULFILLED") {
       checkinStatusBanner.className = "checkin-status-banner fulfilled";
       checkinStatusText.textContent = "✅ Reservation Fulfilled! Enjoy your ride.";
+      openCameraBtn.hidden = true;
       stopTimer();
       reservationTimer.textContent = "VERIFIED";
     } else {
       checkinStatusBanner.className = "checkin-status-banner";
       checkinStatusText.textContent = "⚠️ Scan the QR code on the coaster door upon boarding to confirm your seat!";
+      openCameraBtn.hidden = false;
       startTimer();
     }
   } else {
@@ -310,7 +387,6 @@ function startTimer() {
       stopTimer();
       reservationTimer.textContent = "00:00";
       
-      // Auto-remove reservation if expired without scan check-in
       db.ref(`reservations/${activeReservation.tripId}/${activeReservation.id}/status`).set("EXPIRED");
       localStorage.removeItem("active_res");
       activeReservation = null;
@@ -427,7 +503,6 @@ showDoorQrBtn.addEventListener("click", () => {
   doorQrModal.hidden = false;
   doorQrCode.innerHTML = "";
   
-  // Point QR code to current location with ?checkin=true parameter
   const checkinUrl = `${window.location.origin}${window.location.pathname}?checkin=true`;
   new QRCode(doorQrCode, { text: checkinUrl, width: 180, height: 180 });
 });
