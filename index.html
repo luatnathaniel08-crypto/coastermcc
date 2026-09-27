@@ -66,6 +66,7 @@
           <button id="mark-not-full-btn" class="btn board" type="button">🟢 Not Full</button>
           <button id="mark-full-btn" class="btn exit" type="button">🔴 Full</button>
         </div>
+        <button id="show-door-qr-btn" class="btn board" style="margin-top:6px;" type="button">🖨️ Print Coaster Door QR</button>
         <p id="driver-current-status" class="driver-current-status"></p>
       </section>
 
@@ -95,11 +96,13 @@
 
       <section id="reservation-panel" class="reservation-panel" hidden>
         <p id="reservation-trip"></p>
+        <div id="checkin-status-banner" class="checkin-status-banner">
+          <p id="checkin-status-text">⚠️ Scan the QR code on the coaster door upon boarding to confirm your seat!</p>
+        </div>
         <div class="timer-wrap">
           <span>Expires in:</span>
           <strong id="reservation-timer">10:00</strong>
         </div>
-        <div id="checkin-qr" class="checkin-qr"></div>
       </section>
 
       <div id="controls">
@@ -108,6 +111,22 @@
       </div>
     </div>
   </main>
+
+  <!-- Door QR Code Print Modal -->
+  <div id="door-qr-modal" class="modal-overlay" hidden>
+    <div class="modal-card door-qr-modal-card">
+      <div id="printable-door-qr-container" class="printable-door-qr-container">
+        <h2>Mabalacat City College</h2>
+        <p class="door-sub">Coaster Boarding Check-In</p>
+        <div id="door-qr-code" class="door-qr-code"></div>
+        <p class="door-instructions"><strong>SCAN TO FULFILL RESERVATION</strong><br>Passengers must scan this QR code upon entering to validate their seat reservation.</p>
+      </div>
+      <div class="modal-actions">
+        <button id="print-door-qr-btn" class="btn board">🖨️ Print QR</button>
+        <button id="close-door-qr-btn" class="btn exit">Close</button>
+      </div>
+    </div>
+  </div>
 
   <div id="role-select-screen" class="modal-overlay" hidden>
     <div class="modal-card">
