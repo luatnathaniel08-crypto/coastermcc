@@ -169,7 +169,7 @@ h1 {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(27,33,64,.55);
+  background: rgba(27,33,64,.65);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -307,16 +307,35 @@ h1 {
   color: #125B49;
 }
 
+.camera-section {
+  margin: 10px 0;
+}
+
+.qr-reader {
+  width: 100%;
+  max-width: 280px;
+  margin: 10px auto;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid var(--navy);
+}
+
+.scanner-options {
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+}
+
 .timer-wrap {
   display: flex;
   justify-content: center;
   align-items: baseline;
   gap: 7px;
+  margin-top: 6px;
 }
 
 #reservation-timer { font: 800 1.55rem var(--font-display); }
 
-/* Printable Door QR Modal Styles */
 .printable-door-qr-container {
   text-align: center;
   border: 2px dashed var(--navy);
@@ -529,7 +548,6 @@ h1 {
 
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-/* Printer Media Query for Clean Poster Printout */
 @media print {
   body {
     background: #ffffff;
@@ -555,15 +573,7 @@ h1 {
     padding: 30px;
   }
 
-  .printable-door-qr-container h2 {
-    font-size: 1.6rem;
-  }
-
-  .door-sub {
-    font-size: 1rem;
-  }
-
-  .door-instructions {
-    font-size: 0.9rem;
-  }
+  .printable-door-qr-container h2 { font-size: 1.6rem; }
+  .door-sub { font-size: 1rem; }
+  .door-instructions { font-size: 0.9rem; }
 }
