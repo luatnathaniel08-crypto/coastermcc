@@ -32,9 +32,9 @@ const DRIVER_PASSWORD = "123456789";
 let reservations = {};
 let coasterAvailable = true;
 let coasterFull = false;
-let isDriverLoggedIn = sessionStorage.getItem("driver_logged_in") === "true";
+// Changed from sessionStorage to localStorage for persistent session
+let isDriverLoggedIn = localStorage.getItem("driver_logged_in") === "true";
 let activeTimerInterval = null;
-let html5QrCodeScanner = null;
 
 function getDeviceId() {
   let id = localStorage.getItem("coaster_device_id");
@@ -54,13 +54,7 @@ const cancelBtn = document.getElementById("cancel-btn");
 const reservationPanel = document.getElementById("reservation-panel");
 const reservationTrip = document.getElementById("reservation-trip");
 const reservationTimer = document.getElementById("reservation-timer");
-const checkinStatusBanner = document.getElementById("checkin-status-banner");
-const checkinStatusText = document.getElementById("checkin-status-text");
-const openCameraBtn = document.getElementById("open-camera-btn");
-const qrFileInput = document.getElementById("qr-file-input");
-const scannerModal = document.getElementById("scanner-modal");
-const uploadFileBtn = document.getElementById("upload-file-btn");
-const closeScannerBtn = document.getElementById("close-scanner-btn");
+const checkinQr = document.getElementById("checkin-qr");
 const seatGrid = document.getElementById("seat-grid");
 const syncIndicator = document.getElementById("sync-indicator");
 const toast = document.getElementById("toast");
@@ -82,11 +76,6 @@ const markAvailableBtn = document.getElementById("mark-available-btn");
 const markUnavailableBtn = document.getElementById("mark-unavailable-btn");
 const markFullBtn = document.getElementById("mark-full-btn");
 const markNotFullBtn = document.getElementById("mark-not-full-btn");
-const showDoorQrBtn = document.getElementById("show-door-qr-btn");
-const doorQrModal = document.getElementById("door-qr-modal");
-const doorQrCode = document.getElementById("door-qr-code");
-const printDoorQrBtn = document.getElementById("print-door-qr-btn");
-const closeDoorQrBtn = document.getElementById("close-door-qr-btn");
 const driverCurrentStatus = document.getElementById("driver-current-status");
 const capacityBarFill = document.getElementById("capacity-bar-fill");
 const selectDapdapMabiga = document.getElementById("select-dapdap-mabiga");
@@ -94,96 +83,6 @@ const selectMabigaDapdap = document.getElementById("select-mabiga-dapdap");
 
 let selectedTrip = null;
 let activeReservation = JSON.parse(localStorage.getItem("active_res") || "null");
-
-function executeCheckinFulfillment() {
-  if (activeReservation && activeReservation.status === "ACTIVE") {
-    db.ref(`reservations/${activeReservation.tripId}/${activeReservation.id}/status`).set("FULFILLED")
-      .then(() => {
-        activeReservation.status = "FULFILLED";
-        localStorage.setItem("active_res", JSON.stringify(activeReservation));
-        showToast("🎉 Seat Verified & Fulfilled!");
-        renderUI();
-      });
-  } else if (activeReservation && activeReservation.status === "FULFILLED") {
-    showToast("✅ Seat already verified.");
-  } else {
-    showToast("⚠️ No active seat reservation found.");
-  }
-}
-
-function handleDoorScanCheckin() {
-  const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get("checkin") === "true") {
-    executeCheckinFulfillment();
-    window.history.replaceState({}, document.title, window.location.pathname);
-  }
-}
-
-// Camera Scanner Logic
-openCameraBtn.addEventListener("click", () => {
-  scannerModal.hidden = false;
-  
-  if (!html5QrCodeScanner) {
-    html5QrCodeScanner = new Html5Qrcode("qr-reader");
-  }
-
-  const config = { fps: 10, qrbox: { width: 220, height: 220 } };
-
-  html5QrCodeScanner.start(
-    { facingMode: "environment" },
-    config,
-    (decodedText) => {
-      // Successful QR scan
-      stopScanner();
-      scannerModal.hidden = true;
-
-      if (decodedText.includes("checkin=true")) {
-        executeCheckinFulfillment();
-      } else {
-        showToast("Invalid Door QR Code.");
-      }
-    },
-    () => {}
-  ).catch((err) => {
-    showToast("Camera permission denied. Use file upload instead.");
-  });
-});
-
-uploadFileBtn.addEventListener("click", () => {
-  qrFileInput.click();
-});
-
-qrFileInput.addEventListener("change", (e) => {
-  if (e.target.files.length === 0) return;
-  const imageFile = e.target.files[0];
-
-  if (!html5QrCodeScanner) {
-    html5QrCodeScanner = new Html5Qrcode("qr-reader");
-  }
-
-  html5QrCodeScanner.scanFile(imageFile, true)
-    .then((decodedText) => {
-      stopScanner();
-      scannerModal.hidden = true;
-      if (decodedText.includes("checkin=true")) {
-        executeCheckinFulfillment();
-      } else {
-        showToast("Invalid Door QR Code image.");
-      }
-    })
-    .catch(() => showToast("Could not find a valid QR Code in image."));
-});
-
-function stopScanner() {
-  if (html5QrCodeScanner && html5QrCodeScanner.isScanning) {
-    html5QrCodeScanner.stop().catch(() => {});
-  }
-}
-
-closeScannerBtn.addEventListener("click", () => {
-  stopScanner();
-  scannerModal.hidden = true;
-});
 
 // Schedules
 const dapdapToMabigaTimes = [
@@ -281,6 +180,7 @@ function renderUI() {
   driverCurrentStatus.textContent = `Status: ${coasterAvailable ? 'AVAILABLE' : 'UNAVAILABLE'} | ${coasterFull ? 'FULL' : 'NOT FULL'}`;
 }
 
+// Select Wheel Events
 selectDapdapMabiga.addEventListener("change", (e) => {
   selectedTrip = e.target.value;
   selectMabigaDapdap.selectedIndex = 0;
@@ -299,6 +199,7 @@ function renderSeats() {
   let reservedCount = 0;
 
   for (let i = 1; i <= CAPACITY; i++) {
+    // Insert empty aisle spacer between column 2 and 3
     if ((i - 1) % 4 === 2) {
       const aisle = document.createElement("div");
       aisle.className = "aisle-spacer";
@@ -309,17 +210,16 @@ function renderSeats() {
     seatEl.className = "seat";
 
     const resEntry = Object.values(tripData).find(
-      (r) => r.seatNumber === i && (r.status === "ACTIVE" || r.status === "FULFILLED")
+      (r) => r.seatNumber === i && r.status === "ACTIVE"
     );
 
     if (resEntry) {
       reservedCount++;
       if (resEntry.deviceId === deviceId) {
         seatEl.classList.add("mine");
-        const badgeLabel = resEntry.status === "FULFILLED" ? "VERIFIED" : "YOU";
         seatEl.innerHTML = `
           <span class="seat-num">Seat ${i}</span>
-          <span class="seat-badge">${badgeLabel}</span>
+          <span class="seat-badge">YOU</span>
         `;
       } else {
         seatEl.classList.add("reserved");
@@ -345,28 +245,22 @@ function renderSeats() {
 }
 
 function renderReservationUI() {
-  if (activeReservation && (activeReservation.status === "ACTIVE" || activeReservation.status === "FULFILLED")) {
+  if (activeReservation && activeReservation.status === "ACTIVE") {
     reservationPanel.hidden = false;
     reserveBtn.hidden = true;
     cancelBtn.hidden = false;
     reservationTrip.textContent = `Trip: ${activeReservation.tripId}`;
     
-    if (activeReservation.status === "FULFILLED") {
-      checkinStatusBanner.className = "checkin-status-banner fulfilled";
-      checkinStatusText.textContent = "✅ Reservation Fulfilled! Enjoy your ride.";
-      openCameraBtn.hidden = true;
-      stopTimer();
-      reservationTimer.textContent = "VERIFIED";
-    } else {
-      checkinStatusBanner.className = "checkin-status-banner";
-      checkinStatusText.textContent = "⚠️ Scan the QR code on the coaster door upon boarding to confirm your seat!";
-      openCameraBtn.hidden = false;
-      startTimer();
+    if (window.QRCode && checkinQr.children.length === 0) {
+      new QRCode(checkinQr, { text: activeReservation.id, width: 120, height: 120 });
     }
+    
+    startTimer();
   } else {
     reservationPanel.hidden = true;
     reserveBtn.hidden = false;
     cancelBtn.hidden = true;
+    checkinQr.innerHTML = "";
     stopTimer();
   }
 }
@@ -375,7 +269,7 @@ function startTimer() {
   if (activeTimerInterval) return;
 
   function updateCountdown() {
-    if (!activeReservation || !activeReservation.expiresAt || activeReservation.status === "FULFILLED") {
+    if (!activeReservation || !activeReservation.expiresAt) {
       stopTimer();
       return;
     }
@@ -390,7 +284,7 @@ function startTimer() {
       db.ref(`reservations/${activeReservation.tripId}/${activeReservation.id}/status`).set("EXPIRED");
       localStorage.removeItem("active_res");
       activeReservation = null;
-      showToast("Reservation Expired! Seat released.");
+      showToast("Reservation Expired!");
       renderUI();
       return;
     }
@@ -424,7 +318,7 @@ db.ref("reservations").on("value", (snap) => {
   Object.keys(reservations).forEach((tripKey) => {
     const trip = reservations[tripKey];
     Object.values(trip).forEach((res) => {
-      if (res.deviceId === deviceId && (res.status === "ACTIVE" || res.status === "FULFILLED")) {
+      if (res.deviceId === deviceId && res.status === "ACTIVE") {
         foundActive = res;
       }
     });
@@ -433,13 +327,12 @@ db.ref("reservations").on("value", (snap) => {
   if (foundActive) {
     activeReservation = foundActive;
     localStorage.setItem("active_res", JSON.stringify(foundActive));
-  } else if (activeReservation && (activeReservation.status === "ACTIVE" || activeReservation.status === "FULFILLED")) {
+  } else if (activeReservation && activeReservation.status === "ACTIVE") {
     activeReservation = null;
     localStorage.removeItem("active_res");
   }
 
   renderUI();
-  handleDoorScanCheckin();
 });
 
 db.ref("coasterAvailability").on("value", (snap) => {
@@ -454,7 +347,7 @@ reserveBtn.addEventListener("click", () => {
   if (!coasterAvailable || coasterFull) return showToast("Coaster unavailable.");
 
   const tripData = reservations[selectedTrip] || {};
-  const active = Object.values(tripData).filter(r => r.status === "ACTIVE" || r.status === "FULFILLED");
+  const active = Object.values(tripData).filter(r => r.status === "ACTIVE");
 
   if (active.length >= CAPACITY) return showToast("Trip is full.");
 
@@ -478,7 +371,7 @@ reserveBtn.addEventListener("click", () => {
     .then(() => {
       activeReservation = newRes;
       localStorage.setItem("active_res", JSON.stringify(newRes));
-      showToast(`Seat ${nextSeat} Reserved! Please scan door QR on arrival.`);
+      showToast(`Seat ${nextSeat} Reserved!`);
       renderUI();
     })
     .catch((err) => showToast("Permission Error: " + err.message));
@@ -496,23 +389,6 @@ cancelBtn.addEventListener("click", () => {
       renderUI();
     })
     .catch((err) => showToast("Error: " + err.message));
-});
-
-// Driver Door QR Generator
-showDoorQrBtn.addEventListener("click", () => {
-  doorQrModal.hidden = false;
-  doorQrCode.innerHTML = "";
-  
-  const checkinUrl = `${window.location.origin}${window.location.pathname}?checkin=true`;
-  new QRCode(doorQrCode, { text: checkinUrl, width: 180, height: 180 });
-});
-
-printDoorQrBtn.addEventListener("click", () => {
-  window.print();
-});
-
-closeDoorQrBtn.addEventListener("click", () => {
-  doorQrModal.hidden = true;
 });
 
 // Driver Panel Handlers
@@ -553,7 +429,7 @@ loginForm.addEventListener("submit", (e) => {
   e.preventDefault();
   if (loginEmail.value === DRIVER_EMAIL && loginPassword.value === DRIVER_PASSWORD) {
     isDriverLoggedIn = true;
-    sessionStorage.setItem("driver_logged_in", "true");
+    localStorage.setItem("driver_logged_in", "true");
     loginModal.hidden = true;
     driverPanel.hidden = false;
   } else {
@@ -565,9 +441,14 @@ loginForm.addEventListener("submit", (e) => {
 loginCancel.addEventListener("click", () => loginModal.hidden = true);
 driverLogout.addEventListener("click", () => {
   isDriverLoggedIn = false;
-  sessionStorage.removeItem("driver_logged_in");
+  localStorage.removeItem("driver_logged_in");
   driverPanel.hidden = true;
 });
 
-// Clock Loop
+// Automatically restore driver panel view on load if session persists
+if (isDriverLoggedIn) {
+  driverPanel.hidden = false;
+}
+
+// Clock Tick Loop
 setInterval(updateClockOnly, 1000);
